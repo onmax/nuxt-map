@@ -1,6 +1,6 @@
 import * as xml2js from 'xml2js'
 import { hash } from 'ohash'
-import type { BasicLocation } from '../lib/types'
+import type { BasicLocation } from '../lib/lib.old/types.old'
 import { Provider } from '~/types/crypto-map'
 
 // The original app is: https://bridgetobitcoin.ts

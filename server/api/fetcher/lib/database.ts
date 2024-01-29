@@ -1,151 +1,116 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { H3Event } from 'h3'
-import { fillMissingFields, parseGoogleTypes } from './matcher'
-import { MatchState } from './types'
-import type { MatchVerdict, MatchVerdictFlat } from './types'
 import { toCSV } from './csv'
+import type { LocationCandidates } from './types'
 import type { Database, Json } from '~/types/supabase'
 import type { Category, Currency, Provider } from '~/types/crypto-map'
-import { serverSupabaseClient } from '#supabase/server'
 
-export async function uploadCsv(client: SupabaseClient<Database>, csv: string, name: string) {
-  const csvBlob = new Blob([csv], { type: 'text/csv' })
-  const { data: dataUpload, error: errorUpload } = await client.storage.from('locations-sources').upload(name, csvBlob, { cacheControl: '3600', upsert: false })
-  if (errorUpload)
-    throw errorUpload
-  const { data: dataPublicUrl } = client.storage.from('locations-sources').getPublicUrl(dataUpload.path, { download: true })
+const LOCATIONS_BUCKET = 'locations-sources'
 
-  return dataPublicUrl.publicUrl
+// The format of the names cannot have special characters. We remove the colons from the date
+// replace only the last two - with colons
+export const dateToStr = (date: Date): string => date.toISOString().replace(/:/g, '-')
+function strToDate(str: string): Date {
+  const [y, mon, date, h, m, s, ms] = str.split(/\D+/).map(Number)
+  return new Date(Date.UTC(y, mon - 1, date, h, m, s, ms))
 }
 
-export async function supabaseBucketCleanup(client: SupabaseClient<Database>, folder: string) {
-  async function keepOnly10Files(files: { name: string, created_at: string }[]) {
-    // Max 10 files. So remove the oldest ones until we have less than 10
-    if (files.length >= 10) {
-      const filesToDelete = files
-        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-        .slice(0, files.length - 10)
-        .map(({ name }) => `${folder}/${name}`)
-      if (filesToDelete.length > 0) {
-        const { error: errorDelete } = await client.storage.from('locations-sources').remove(filesToDelete)
-        if (errorDelete)
-          throw errorDelete
-      }
-    }
-  }
-
-  async function deleteRecentFiles(files: { name: string, created_at: string }[]) {
-    // Remove files that are younger than 12 hours
-    if (files.length > 0) {
-      const filesToDelete = files
-        .filter(({ created_at }) => new Date().getTime() - new Date(created_at).getTime() < 12 * 60 * 60 * 1000)
-        .map(({ name }) => `${folder}/${name}`)
-      if (filesToDelete.length > 0) {
-        const { error: errorDelete } = await client.storage.from('locations-sources').remove(filesToDelete)
-        if (errorDelete)
-          throw errorDelete
-      }
-    }
-  }
-
-  const { data: files, error: errorFiles } = await client.storage.from('locations-sources').list(folder)
-  if (errorFiles)
-    throw errorFiles
-
-  const successFiles = files.filter(({ name }) => name.includes('ok'))
-  const conflictFiles = files.filter(({ name }) => name.includes('conflict'))
-
-  await keepOnly10Files(successFiles)
-  await keepOnly10Files(conflictFiles)
-  await deleteRecentFiles(successFiles)
-  await deleteRecentFiles(conflictFiles)
+interface UploadCSV {
+  filepath: string
+  content: string
+}
+async function uploadCSV(client: SupabaseClient<Database>, { filepath, content }: UploadCSV) {
+  const csvBlob = new Blob([content], { type: 'text/csv' })
+  const fileOptions = { cacheControl: '3600', upsert: false }
+  const { data: dataUpload } = await client.storage.from(LOCATIONS_BUCKET).upload(filepath, csvBlob, fileOptions)
+  console.log(`📤 Uploaded ${filepath} to Supabase`) // eslint-disable-line no-console
+  if (dataUpload)
+    return client.storage.from(LOCATIONS_BUCKET).getPublicUrl(dataUpload.path, { download: true }).data.publicUrl
 }
 
-export async function addToDatabase(client: SupabaseClient<Database>, allLocations: MatchVerdictFlat[], provider: Provider) {
-  interface LocationDb {
-    name: string
-    address: string
-    gmaps: string
-    category: Category
-    gmaps_types: string[]
-    enabled: boolean
-    lat: number
-    lng: number
-    accepts: Currency[]
-    sells: Currency[]
-    facebook?: string
-    instagram?: string
-    photo?: string
-    rating?: number
-    provider: Provider
+interface LocationsData { matched: LocationCandidates[], unmatched: LocationCandidates[] }
+interface LocationsOptions { provider: string, ts: string }
+
+async function uploadLocations(client: SupabaseClient<Database>, { matched, unmatched }: LocationsData, { provider, ts }: LocationsOptions) {
+  const uploadMatched = uploadCSV(client, { filepath: `${provider}/${ts}/matched.csv`, content: toCSV(matched) })
+  const uploadUnmatched = uploadCSV(client, { filepath: `${provider}/${ts}/unmatched.csv`, content: toCSV(unmatched) })
+  const upload = await Promise.allSettled([uploadMatched, uploadUnmatched])
+  if (upload.some(({ status }) => status === 'rejected'))
+    throw new Error('Error uploading files to Supabase')
+  const [matchedUrl, unmatchedUrl] = upload as PromiseFulfilledResult<string>[]
+
+  return { matchedUrl: matchedUrl.value, unmatchedUrl: unmatchedUrl.value }
+}
+
+export async function storageCleanup(client: SupabaseClient<Database>, { provider, ts }: LocationsOptions) {
+  const { data: folders } = await client.storage.from(LOCATIONS_BUCKET).list(provider)
+
+  const foldersToDelete = (folders || [])
+    .map(folder => ({ ...folder, created_at: strToDate(folder.name) }))
+    .sort((a, b) => b.created_at.getTime() - a.created_at.getTime()) // sort by date descending
+    .filter((folder, index) => {
+      const hoursDiff = Math.abs(Date.now() - new Date(folder.created_at).getTime()) / (1000 * 60 * 60)
+      return index >= 10 || (hoursDiff < 12 && folder.name !== ts)
+    })
+    .map(({ name }) => `${provider}/${name}`)
+
+  if (foldersToDelete.length === 0)
+    return
+
+  const filesToDelete = []
+  for (const folder of foldersToDelete) {
+    const { data } = await client.storage.from(LOCATIONS_BUCKET).list(folder)
+    if (data)
+      filesToDelete.push(...data.map(file => `${folder}/${file.name}`))
   }
-  const toLocationDb = (match: MatchVerdictFlat): LocationDb => ({
-    name: match.name,
-    address: match.candidateAddress!, // TODO If match by location, we need first to retrieve the data and also save it in Supabase
-    gmaps: match.candidatePlaceId,
-    category: parseGoogleTypes(match.candidateGMapsTypes || []),
-    gmaps_types: match.candidateGMapsTypes!,
-    enabled: true,
-    lat: match.candidateLat,
-    lng: match.candidateLng,
-    accepts: match.accepts || [],
-    sells: match.sells || [],
-    facebook: match.facebook,
-    instagram: match.instagram,
-    photo: match.candidatePhoto,
-    rating: match.candidateRating,
+  console.log(`🧹 Deleting ${filesToDelete} files`) // eslint-disable-line no-console
+  await client.storage.from(LOCATIONS_BUCKET).remove(filesToDelete)
+}
+
+interface LocationDb {
+  name: string
+  address: string
+  gmaps: string
+  category: Category
+  gmaps_types: string[]
+  enabled: boolean
+  lat: number
+  lng: number
+  accepts: Currency[]
+  sells: Currency[]
+  facebook?: string
+  instagram?: string
+  photo?: string
+  rating?: number
+  provider: Provider
+}
+
+async function saveToDatabase(client: SupabaseClient<Database>, allLocations: LocationCandidates[], provider: Provider) {
+  const locations: Json[] = allLocations.map(({ source, candidates }) => ({
+    sells: source.sells || [],
+    gmaps_types: candidates.at(0)?.gmaps_types || [],
+    ...candidates.at(0),
+    ...source,
+    address: candidates.at(0)?.address || source.address || '',
+    gmaps: candidates.at(0)?.placeId || '',
+    enabled: false,
     provider,
-  })
+  } satisfies LocationDb))
 
-  // For now we only add the locations that have been matched successfully
-  const locations = allLocations
-    .filter(({ state }) => state === MatchState.Success)
-    .map(toLocationDb)
-
-  const body = { locations: locations as unknown as Json[] }
-  const { error: errorInsert } = await client.rpc('upsert_locations_with_gmaps_api', body)
+  const { error: errorInsert } = await client.rpc('upsert_locations_with_gmaps_api', { locations })
   return errorInsert
 }
 
-/**
- * Given a list of matches, it will upload them to Supabase and return the path where they were uploaded
- * We
- */
-export async function uploadVerdict(matches: MatchVerdict[], provider: string, event: H3Event) {
-  // Fill missing fields for each match.
-  // When we search by coordinates, we don't get the address, and other fields. So we need to fetch them
-  const matchedLocations = await fillMissingFields(matches)
-  const csvSuccess = toCSV(matchedLocations)
-
-  // Get the matches that have multiple matches and return them as CSV
-  const conflictMatches = flattenMatchVerdicts(matches.filter(({ state }) => state === MatchState.MultipleMatches))
-  const csvConflict = toCSV(conflictMatches)
-
-  const client = await serverSupabaseClient(event)
+export async function uploadResults(client: SupabaseClient<Database>, { matched, unmatched, provider }: LocationsData & { provider: Provider }) {
   const { supabaseAdminPassword: password, supabaseAdminUser: email } = useRuntimeConfig()
-
   await client.auth.signInWithPassword({ email, password })
-  supabaseBucketCleanup(client, provider)
 
-  const ts = new Date().toISOString().replace(/:/g, '-').replace('T', '-').split('.')[0]
-  const pathSuccess = await uploadCsv(client, csvSuccess, `${provider}/ok-${ts}.csv`)
-  const pathConflict = await uploadCsv(client, csvConflict, `${provider}/conflicts-${ts}.csv`)
+  const options: LocationsOptions = { ts: dateToStr(new Date()), provider: provider.replace(/\s/g, '-').toLowerCase() }
 
-  return { pathConflict, pathSuccess }
-}
+  const urls = await uploadLocations(client, { matched, unmatched }, options)
+  if (urls.matchedUrl && urls.unmatchedUrl)
+    await storageCleanup(client, options)
 
-export function flattenMatchVerdicts(allLocations: MatchVerdict[]): MatchVerdictFlat[] {
-  const locations: MatchVerdictFlat[] = []
-  for (const item of allLocations) {
-    if (item.state === MatchState.Success) {
-      const { candidate, matchBy, score } = item.matches[0]
-      locations.push({ ...item, ...candidate, matchBy: [matchBy], ...score })
-    }
-    else {
-      item.matches
-        .flatMap(({ score, candidate, matchBy }) => ({ ...item, ...{ ...score, ...candidate }, matchBy: [matchBy] }))
-        .forEach(item => locations.push(item))
-    }
-  }
-  return locations
+  await saveToDatabase(client, matched, provider)
+
+  return urls
 }

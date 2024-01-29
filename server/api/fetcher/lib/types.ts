@@ -1,58 +1,76 @@
-import type { Currency } from '~/types/crypto-map'
+import type { Category, Currency } from '~/types/crypto-map'
 
-interface Coordinates {
+interface ExtraLocationSource { [x: string]: unknown }
+
+export interface LocationSource extends ExtraLocationSource {
+  id: string | number
+  name: string
   lat: number
   lng: number
-}
-
-export interface Score {
-  nameScore: number
-  nameScoreLevenshtein: number
-  nameScoreJaroWinkler: number
-  addressScore?: number
-  addressScoreLevenshtein?: number
-  addressScoreJaroWinkler?: number
-  distanceScore: number
-  score: number
-}
-
-export enum MatchState {
-  Success = 'success', // The location undoubtedly matches the place ID
-  NoMatch = 'no-match', // No matches found
-  MultipleMatches = 'multiple-matches', // Multiple matches found
-  Inconclusive = 'inconclusive', // The score is below the threshold
-}
-
-export enum MatchBy {
-  Text = 'text',
-  Location = 'location',
-}
-type Prettify<T> = { [K in keyof T]: T[K]; } & unknown
-
-export type BasicLocation = Prettify<{
-  name: string
+  accepts: Currency[]
   address?: string
+  sells?: Currency[]
+  category: Category
   facebook?: string
   instagram?: string
-  sells?: Currency[]
-  accepts?: Currency[]
-} & Coordinates & { id: string | number }>
-
-export interface Candidate<T extends MatchBy> {
-  candidateName: string
-  candidatePlaceId: string
-  candidateLat: number
-  candidateLng: number
-  candidateAddress?: T extends MatchBy.Text ? string : undefined
-  candidateGMapsTypes?: T extends MatchBy.Text ? string[] : undefined
-  candidateRating?: T extends MatchBy.Text ? number : undefined
-  candidatePhoto?: T extends MatchBy.Text ? string : undefined
-}
-export interface Match<T extends MatchBy = MatchBy> {
-  score: Score
-  matchBy: T
-  candidate: Candidate<T>
 }
 
-export type MatchVerdict = BasicLocation & { matches: Match[], state: MatchState }
-export type MatchVerdictFlat = Score & Candidate<MatchBy> & BasicLocation & { state: MatchState, matchBy: MatchBy[] }
+export interface GoogleMapsCandidate {
+  placeId: string
+  name: string
+  address: string
+  lat: number
+  lng: number
+  rating?: number
+  photo?: string
+  gmaps_types: string[]
+  category: Category
+  distanceScore: number
+  nameScore: number
+  addressScore: number
+}
+
+export interface LocationCandidates {
+  source: LocationSource
+  candidates: GoogleMapsCandidate[]
+  state: MatchState
+}
+
+export interface GeoScore { distanceScore: number }
+export interface StringScore { nameScore: number, addressScore: number }
+
+export type GeoScoreCandidate = GoogleMapsCandidate & GeoScore & Partial<StringScore>
+
+export interface LocationUnscoredCandidates { source: LocationSource, candidates: GoogleMapsCandidate[] }
+export interface UnmatchedGeoCandidate { source: LocationSource, candidates: GeoScoreCandidate[] }
+
+type Prettify< T > = { [K in keyof T]: T[K]; } & unknown
+
+export enum MatchState {
+  Unknown = 'unknown',
+  GeoMatch = 'geo-match',
+  StringMatch = 'string-match',
+  NoCandidates = 'no-candidates',
+  MultipleCandidates = 'multiple-matches',
+  Inconclusive = 'inconclusive',
+}
+
+export type LocationMatch = Prettify<{ source: LocationSource } & (
+  | (
+    & {
+      state: MatchState.GeoMatch
+      match: GeoScoreCandidate
+    }
+  )
+  | (
+    & { state: MatchState.StringMatch | MatchState.MultipleCandidates | MatchState.Inconclusive }
+    & Pick<GoogleMapsCandidate, 'placeId' | 'photo' | 'rating' | 'gmaps_types'>
+    & GeoScore & StringScore
+  )
+  | (
+    & { state: MatchState.NoCandidates }
+    // We make these fields undefined to avoid having to check for their existence
+    & Partial<Pick<GoogleMapsCandidate, 'placeId' | 'photo' | 'rating' | 'gmaps_types'>>
+    & Partial<GeoScore> & Partial<StringScore>
+  )
+)>

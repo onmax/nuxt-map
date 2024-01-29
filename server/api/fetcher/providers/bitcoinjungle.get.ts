@@ -1,4 +1,4 @@
-import type { BasicLocation } from '../lib/types'
+import type { LocationSource } from '../lib/types'
 import { Currency, Provider } from '~/types/crypto-map'
 
 export default defineEventHandler(async () => {
@@ -10,11 +10,10 @@ export default defineEventHandler(async () => {
   })
 })
 
-export interface BitcoinJungleLocation extends BasicLocation {
+export interface BitcoinJungleLocation extends LocationSource {
   phone?: string
   website?: string
   description?: string
-  category: string
   facebook?: string
   instagram?: string
   accepts: Currency[]

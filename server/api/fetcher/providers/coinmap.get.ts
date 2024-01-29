@@ -1,4 +1,4 @@
-import type { BasicLocation } from '../lib/types'
+import type { BasicLocation } from '../lib/lib.old/types.old'
 import { Currency, Provider } from '~/types/crypto-map'
 
 export default defineEventHandler(async () => {

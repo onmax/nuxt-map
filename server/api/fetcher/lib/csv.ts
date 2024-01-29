@@ -1,16 +1,28 @@
 import { Parser } from '@json2csv/plainjs'
-import type { MatchVerdictFlat } from './types'
+import type { GoogleMapsCandidate, LocationCandidates, LocationSource } from './types'
 
-export function toCSV(locations: MatchVerdictFlat[]): string {
+export function toCSV(locations: LocationCandidates[]) {
   if (locations.length === 0)
     return ''
 
-  const keys = new Set()
-  locations.forEach(item => Object.keys(item).forEach(key => keys.add(key)))
+  const firstLocation = locations.at(0)!
 
-  const order: (keyof MatchVerdictFlat)[] = ['state', 'score', 'id', 'name', 'candidateName', 'address', 'candidateAddress', 'lat', 'candidateLat', 'lng', 'candidateLng', 'matchBy']
-  const sortedFields = [...order, ...Array.from(keys).filter(key => !order.includes(key as keyof MatchVerdictFlat))] as (keyof MatchVerdictFlat)[]
+  const sourceKeys = (Object.keys(firstLocation.source) as (keyof LocationSource)[]).map(key => `source.${key}`)
 
-  const parser = new Parser({ fields: sortedFields })
-  return parser.parse(locations)
+  const locationWithCandidates = locations.find(({ candidates }) => candidates.length > 0)
+  const candidateKeys = !locationWithCandidates
+    ? []
+    : (Object.keys(locationWithCandidates.candidates.at(0)!) as (keyof GoogleMapsCandidate)[]).map(key => `candidate.${key}`)
+
+  const topLevelKeys = Object.keys(firstLocation).filter(key => !['source', 'candidate'].includes(key))
+  const fields = [...topLevelKeys, ...sourceKeys, ...candidateKeys]
+
+  // It will flatten the candidates array, so each location will have as many rows as candidates
+  const flatLocations = locations.flatMap((location) => {
+    const { source, candidates, state } = location
+    return candidates.map(candidate => ({ ...location, source, candidate, state }))
+  })
+
+  const parser = new Parser({ fields })
+  return parser.parse(flatLocations)
 }
