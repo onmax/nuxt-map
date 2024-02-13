@@ -1,5 +1,8 @@
 import { Parser } from '@json2csv/plainjs'
-import type { GoogleMapsCandidate, LocationCandidates, LocationSource } from './types'
+import { parse as parseCSV } from 'csv-string'
+
+import type { GoogleMapsCandidate, LocationCandidates, LocationSource, MatchState } from './types'
+import type { Category, Currency } from '~/types/crypto-map'
 
 export function toCSV(locations: LocationCandidates[]) {
   if (locations.length === 0)
@@ -25,4 +28,84 @@ export function toCSV(locations: LocationCandidates[]) {
 
   const parser = new Parser({ fields })
   return parser.parse(flatLocations)
+}
+
+interface CSVRow {
+  'source.id': string | number
+  'source.name': string
+  'source.lat': number
+  'source.lng': number
+  'source.accepts': string
+  'source.address'?: string
+  'source.sells'?: string
+  'source.category': Category
+  'source.facebook'?: string
+  'source.instagram'?: string
+  'candidate.name'?: string
+  'candidate.category'?: string
+  'candidate.lat'?: number
+  'candidate.lng'?: number
+  'candidate.address'?: string
+  'candidate.placeId'?: string
+  'candidate.rating'?: number
+  'candidate.photo'?: string
+  'candidate.gmapsTypes'?: string[]
+  'candidate.distanceScore'?: number
+  'candidate.stringScore'?: number
+  'candidate.nameDamerauLevensteinScore'?: number
+  'candidate.nameFuzzySearchScore'?: number
+  'candidate.addressDamerauLevensteinScore'?: number
+  'candidate.addressFuzzySearchScore'?: number
+  state: MatchState
+}
+
+export async function csvToJson(csv: string) {
+  if (!csv)
+    return
+  const locationCandidates: LocationCandidates[] = []
+
+  const records = parseCSV(csv, { output: 'objects' }) as unknown as CSVRow[]
+
+  for await (const record of records) {
+    const maybeLocation = locationCandidates.find(c => c.source.id === record['source.id'])
+
+    const candidate: GoogleMapsCandidate = {
+      name: record['candidate.name'] || '',
+      category: record['candidate.category'] as Category,
+      lat: record['candidate.lat']!,
+      lng: record['candidate.lng']!,
+      address: record['candidate.address']!,
+      placeId: record['candidate.placeId']!,
+      rating: record['candidate.rating'],
+      photo: record['candidate.photo'],
+      gmapsTypes: record['candidate.gmapsTypes']!,
+      distanceScore: record['candidate.distanceScore']!,
+      stringScore: record['candidate.stringScore']!,
+      nameDamerauLevensteinScore: record['candidate.nameDamerauLevensteinScore']!,
+      nameFuzzySearchScore: record['candidate.nameFuzzySearchScore']!,
+      addressDamerauLevensteinScore: record['candidate.addressDamerauLevensteinScore']!,
+      addressFuzzySearchScore: record['candidate.addressFuzzySearchScore']!,
+    }
+
+    if (maybeLocation) {
+      maybeLocation.candidates.push(candidate)
+    }
+    else {
+      const state = record.state as MatchState
+      const source: LocationSource = {
+        id: record['source.id'],
+        name: record['source.name'],
+        accepts: record['source.accepts'] ? JSON.parse(record['source.accepts'] as string) as Currency[] : [],
+        category: record['source.category'],
+        lat: record['source.lat'],
+        lng: record['source.lng'],
+        address: record['source.address'],
+        facebook: record['source.facebook'],
+        instagram: record['source.instagram'],
+        sells: record['source.sells'] ? JSON.parse(record['source.sells'] as string) as Currency[] : [],
+      }
+      locationCandidates.push({ state, source, candidates: [candidate] })
+    }
+  }
+  return locationCandidates
 }

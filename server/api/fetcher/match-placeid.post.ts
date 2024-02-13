@@ -1,17 +1,17 @@
-/* eslint-disable no-console */
-
-import { uploadResults } from './lib/database'
+import { createConsola } from 'consola'
+import { getAuthClient, sanitizeProviderName, uploadResults } from './lib/database'
 import { classifyByGeolocation } from './lib/geo-score'
 import { getCandidates } from './lib/google-maps-api'
 import { type LocationSource, MatchState } from './lib/types'
 import { partition } from './lib/util'
-import { serverSupabaseClient } from '#supabase/server'
+import { classifyByStringScore } from './lib/string-score'
 import { Provider } from '~/types/crypto-map'
-import type { Database } from '~/types/supabase'
 
 const p = (n1: number, n2: number) => `${((n1 / n2) * 100).toFixed(2)}%`
 
 export default defineEventHandler(async (event) => {
+  const consola = createConsola()
+
   // e.g. ?provider=Bitcoin+20%Jungle
   const { provider } = getQuery(event) as { provider: Provider }
   if (!Object.values(Provider).includes(provider as Provider))
@@ -21,24 +21,27 @@ export default defineEventHandler(async (event) => {
 
   const count = locations.length
 
-  console.log(`🏭 Received ${count} locations for ${provider}`)
+  consola.info(`🏭 Received ${count} locations for ${provider}`)
 
-  const l = locations.at(0)!
-  const candidates = await getCandidates([l!])
+  const candidates = await getCandidates(locations)
+
+  // First, split the results between the locations with candidates and locations without candidates
   const [withCandidates, noCandidates] = partition(candidates, c => c.state !== MatchState.NoCandidates)
+  consola.info(`🏭 ${withCandidates.length} locations with candidates(${p(withCandidates.length, count)}%) and ${noCandidates.length} without candidates`)
+
   classifyByGeolocation(withCandidates)
-
-  console.log(`🏭 ${withCandidates.length} locations with candidates(${p(withCandidates.length, count)}%) and ${noCandidates.length} without candidates`)
-
   const [geoMatched, geoUnmatched] = partition(withCandidates, c => c.state === MatchState.GeoMatch)
+  consola.info(`🏭 [GEO SCORE] We found a geo match for ${geoMatched.length} locations(${p(geoMatched.length, count)}%) and still ${geoUnmatched.length} without match`)
 
-  console.log(`🏭 [GEO SCORE] We found a match for ${geoMatched.length} locations(${p(geoMatched.length, count)}%) and ${geoUnmatched.length} without match`)
+  classifyByStringScore(geoUnmatched)
+  const [stringMatched, stringUnmatched] = partition(geoUnmatched, c => c.state === MatchState.StringMatch)
+  consola.info(`🏭 [STRING SCORE] We found a string match for ${stringMatched.length} locations(${p(stringMatched.length, count)}%) and still ${stringUnmatched.length} without match`)
 
-  console.log(`🏭 Uploading results to Supabase`)
+  consola.info(`🏭 Uploading results to Supabase`)
 
-  const client = await serverSupabaseClient<Database>(event)
-  const unmatched = noCandidates.concat(geoUnmatched)
-  const matched = geoMatched
+  const client = await getAuthClient(event)
+  const unmatched = noCandidates.concat(geoUnmatched).concat(stringUnmatched)
+  const matched = geoMatched.concat(stringMatched)
   const csvUrls = await uploadResults(client, { provider, matched, unmatched })
 
   const stats = {
@@ -51,5 +54,6 @@ export default defineEventHandler(async (event) => {
     percentage: p(matched.length, count),
   }
 
-  return new Response(JSON.stringify({ ...csvUrls, stats }), { headers: { 'content-type': 'application/json' } })
+  const latests = `/api/fetcher/provider/${sanitizeProviderName(provider)}/latests`
+  return new Response(JSON.stringify({ ...csvUrls, stats, latests }), { headers: { 'content-type': 'application/json' } })
 })

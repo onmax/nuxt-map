@@ -1,6 +1,6 @@
-import type { BasicLocation } from '../lib/lib.old/types.old'
-import { filterCurrencies, toUtf8 } from '../lib/util'
-import { Currency, Provider } from '~/types/crypto-map'
+import type { LocationSource } from '../../lib/types'
+import { filterCurrencies, toUtf8 } from '../../lib/util'
+import { Category, Currency, Provider } from '~/types/crypto-map'
 
 export default defineEventHandler(async () => {
   const locations = await getLocations('https://static.btcmap.org/api/v2/elements.json')
@@ -11,8 +11,7 @@ export default defineEventHandler(async () => {
   })
 })
 
-export interface BtcMapLocation extends BasicLocation {
-  category: string
+export interface BtcMapLocation extends LocationSource {
   facebook: string
   instagram: string
   accepts: Currency[]
@@ -65,19 +64,19 @@ async function getLocations(url: string): Promise<BtcMapLocation[]> {
 
     const name = toUtf8(tags.name || tags['addr:place'] || tags['addr:place:it'] || tags['addr:place:de'])
 
-    const categoryMapping: { [key: string]: string } = {
-      atm: 'cash',
-      bar: 'restaurant_bar',
-      cafe: 'food_drinks',
-      hotel: 'hotel_lodging',
-      other: 'miscellaneous',
-      pub: 'restaurant_bar',
-      restaurant: 'restaurant_bar',
+    const categoryMapping: { [key: string]: Category } = {
+      atm: Category.Cash,
+      bar: Category.RestaurantBar,
+      cafe: Category.FoodDrinks,
+      hotel: Category.HotelLodging,
+      other: Category.Miscellaneous,
+      pub: Category.RestaurantBar,
+      restaurant: Category.RestaurantBar,
     }
 
     return {
       id: item.id,
-      category: toUtf8(categoryMapping[item.tags.category] || 'miscellaneous'),
+      category: categoryMapping[item.tags.category] || Category.Miscellaneous,
       lat: osmJson.lat || osmJson.geometry?.[0].lat,
       lng: osmJson.lon || osmJson.geometry?.[0].lon,
       name,

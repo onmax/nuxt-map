@@ -1,6 +1,6 @@
 import { hash } from 'ohash'
-import type { BasicLocation } from '../lib/lib.old/types.old'
-import { Provider } from '~/types/crypto-map'
+import type { LocationSource } from '../../lib/types'
+import { Currency, Provider } from '~/types/crypto-map'
 
 export default defineEventHandler(async () => {
   const locations = await getLocations('https://acceptlightning.com/merchants.json')
@@ -12,7 +12,7 @@ export default defineEventHandler(async () => {
   })
 })
 
-export interface AcceptLightningApi extends BasicLocation {
+export interface AcceptLightningApi extends Omit<LocationSource, 'category'> {
   phone?: string
   website?: string
   service?: string
@@ -39,5 +39,6 @@ async function getLocations(url: string): Promise<AcceptLightningApi[]> {
       lng: loc.location.latlong!.lng!,
       city: loc.location.city,
       country: loc.location.country,
+      accepts: [Currency.LBTC],
     } satisfies AcceptLightningApi))
 }

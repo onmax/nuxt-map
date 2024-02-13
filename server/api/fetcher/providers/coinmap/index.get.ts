@@ -1,4 +1,4 @@
-import type { BasicLocation } from '../lib/lib.old/types.old'
+import type { LocationSource } from '../../lib/types'
 import { Currency, Provider } from '~/types/crypto-map'
 
 export default defineEventHandler(async () => {
@@ -11,8 +11,7 @@ export default defineEventHandler(async () => {
   })
 })
 
-interface CoinmapLocation extends BasicLocation {
-  category: string
+interface CoinmapLocation extends Omit<LocationSource, 'category'> {
   name: string
   created_on: number
   geolocation_degrees: string

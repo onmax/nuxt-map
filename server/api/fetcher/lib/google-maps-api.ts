@@ -23,7 +23,8 @@ async function getCandidatesForLocation(location: LocationSource): Promise<Googl
   const input = (address ? `${name}, ${address}` : name).trim()
   const inputtype = 'textquery'
   const locationbias = `circle:50@${lat},${lng}`
-  const query = { inputtype, fields, key, input, locationbias }
+  const language = 'en'
+  const query = { inputtype, fields, key, input, locationbias, language }
 
   const rawCandidates = await $fetch<FindPlaceFromTextRes>(url, { query }).then(d => d.candidates)
 
@@ -37,9 +38,15 @@ async function getCandidatesForLocation(location: LocationSource): Promise<Googl
     rating: _candidate.rating,
     types: _candidate.types,
     category: parseGoogleTypes(_candidate.types),
+    gmapsTypes: _candidate.types,
     addressScore: -1,
     distanceScore: -1,
     nameScore: -1,
+    addressDamerauLevensteinScore: -1,
+    addressFuzzySearchScore: -1,
+    nameDamerauLevensteinScore: -1,
+    nameFuzzySearchScore: -1,
+    stringScore: -1,
   }))
 
   return candidates

@@ -19,7 +19,7 @@ function getGeolocationScore({ lat: sourceLat, lng: sourceLng }: LocationSource,
  * Go though the candidates and computes the score for each one of them
  * Then, it will classify the candidates in two groups:
  *  - geoMatched: If there is only a candidate with a score greater than 0.9 and the second one is lower than 0.5
- *  - geoUnmatched: If the previous condition is not met
+ *  - Unmatched: If the previous condition is not met
  */
 export function classifyByGeolocation(locations: LocationCandidates[]) {
   for (const location of locations) {

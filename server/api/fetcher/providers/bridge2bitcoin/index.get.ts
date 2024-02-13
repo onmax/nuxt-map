@@ -1,7 +1,7 @@
 import * as xml2js from 'xml2js'
 import { hash } from 'ohash'
-import type { BasicLocation } from '../lib/lib.old/types.old'
-import { Provider } from '~/types/crypto-map'
+import type { LocationSource } from '../../lib/types'
+import { Currency, Provider } from '~/types/crypto-map'
 
 // The original app is: https://bridgetobitcoin.ts
 
@@ -10,12 +10,12 @@ export default defineEventHandler(async () => {
 
   return $fetch('/api/fetcher/match-placeid', {
     method: 'post',
-    query: { provider: Provider.BridgeToBitcoin },
+    query: { provider: Provider.Bridge2Bitcoin },
     body: locations,
   })
 })
 
-interface BridgeToBitcoinLocation extends BasicLocation {
+interface BridgeToBitcoinLocation extends Omit<LocationSource, 'category'> {
   description: string
   lightning: boolean
   boltCard: boolean
@@ -40,7 +40,9 @@ async function getLocations(url: string): Promise<BridgeToBitcoinLocation[]> {
     const lng = Number(coordinates.split(',')[0])
     const boltCard = true
     const onlinePaymentsOnly = true
-    return { id, name, description, lightning, lat, lng, boltCard, onlinePaymentsOnly, coordinates } satisfies BridgeToBitcoinLocation
+    const accepts = [Currency.BTC]
+
+    return { id, name, description, lightning, lat, lng, boltCard, onlinePaymentsOnly, coordinates, accepts } satisfies BridgeToBitcoinLocation
   })
   return locations
 }

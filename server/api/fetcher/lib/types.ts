@@ -23,11 +23,17 @@ export interface GoogleMapsCandidate {
   lng: number
   rating?: number
   photo?: string
-  gmaps_types: string[]
+  gmapsTypes: string[]
   category: Category
   distanceScore: number
-  nameScore: number
-  addressScore: number
+
+  stringScore: number
+
+  nameDamerauLevensteinScore: number
+  nameFuzzySearchScore: number
+
+  addressDamerauLevensteinScore: number
+  addressFuzzySearchScore: number
 }
 
 export interface LocationCandidates {
@@ -64,13 +70,18 @@ export type LocationMatch = Prettify<{ source: LocationSource } & (
   )
   | (
     & { state: MatchState.StringMatch | MatchState.MultipleCandidates | MatchState.Inconclusive }
-    & Pick<GoogleMapsCandidate, 'placeId' | 'photo' | 'rating' | 'gmaps_types'>
+    & Pick<GoogleMapsCandidate, 'placeId' | 'photo' | 'rating' | 'gmapsTypes'>
     & GeoScore & StringScore
   )
   | (
     & { state: MatchState.NoCandidates }
     // We make these fields undefined to avoid having to check for their existence
-    & Partial<Pick<GoogleMapsCandidate, 'placeId' | 'photo' | 'rating' | 'gmaps_types'>>
+    & Partial<Pick<GoogleMapsCandidate, 'placeId' | 'photo' | 'rating' | 'gmapsTypes'>>
     & Partial<GeoScore> & Partial<StringScore>
   )
 )>
+
+export enum MimeType {
+  JSON = 'application/json',
+  CSV = 'text/csv',
+}

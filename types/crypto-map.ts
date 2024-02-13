@@ -36,8 +36,8 @@ export enum Provider {
   CryptopaymentLink = 'Cryptopayment Link',
   Edenia = 'Edenia',
   BitcoinJungle = 'Bitcoin Jungle',
-  AcceptLightning = 'AcceptLightning',
-  BridgeToBitcoin = 'BridgeToBitcoin',
+  AcceptLightning = 'Accept Lightning',
+  Bridge2Bitcoin = 'Bridge2Bitcoin',
   BtcMap = 'BtcMap',
   Coinmap = 'Coinmap',
 }
