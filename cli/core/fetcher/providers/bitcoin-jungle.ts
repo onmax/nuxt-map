@@ -1,14 +1,16 @@
-import type { LocationSource } from '../../lib/types'
+import type { FetcherResult, LocationSource } from '../src/types'
+import { fetcher } from '../src'
+import { getAuthClient } from '../src/database'
 import { Currency, Provider } from '~/types/crypto-map'
 
-export default defineEventHandler(async () => {
-  const locations = await getLocations('https://maps.bitcoinjungle.app/api/list')
-  return $fetch('/api/fetcher/match-placeid', {
-    method: 'post',
-    query: { provider: Provider.BitcoinJungle },
-    body: locations,
-  })
-})
+const PROVIDER = Provider.BitcoinJungle
+
+export async function fetchBitcoinJungle(): Promise<FetcherResult> {
+  const supabaseClient = await getAuthClient()
+  const locations = await getLocations(useRuntimeConfig().providersSources[PROVIDER])
+  const res = await fetcher(locations, PROVIDER, supabaseClient)
+  return res
+}
 
 export interface BitcoinJungleLocation extends LocationSource {
   phone?: string

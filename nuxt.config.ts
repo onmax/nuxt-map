@@ -1,6 +1,7 @@
 import { env } from 'node:process'
 import { pwa } from './config/pwa'
 import { appDescription } from './constants/index'
+import { Provider } from './types/crypto-map'
 
 export default defineNuxtConfig({
   modules: [
@@ -35,6 +36,11 @@ export default defineNuxtConfig({
     supabaseKey: env.SUPABASE_KEY,
     supabaseAdminUser: env.SUPABASE_ADMIN_USER,
     supabaseAdminPassword: env.SUPABASE_ADMIN_PASSWORD,
+
+    providersSources: Object.values(Provider).reduce((acc, provider) => {
+      acc[provider] = env[`PROVIDER_SOURCE_${provider.toLocaleUpperCase().replaceAll(' ', '_')}`]!
+      return acc
+    }, {} as Record<Provider, string>),
   },
 
   ignore: [

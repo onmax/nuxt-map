@@ -1,21 +1,22 @@
 import * as xml2js from 'xml2js'
 import { hash } from 'ohash'
-import type { LocationSource } from '../../lib/types'
+import type { FetcherResult, LocationSource } from '../src/types'
+import { fetcher } from '../src'
+import { getAuthClient } from '../src/database'
 import { Currency, Provider } from '~/types/crypto-map'
 
 // The original app is: https://bridgetobitcoin.ts
 
-export default defineEventHandler(async () => {
-  const locations = await getLocations('https://www.google.com/maps/d/kml?mid=1y3fCDIEzIaS9LSltjpT2Lr-D1lmQEj0&forcekml=1')
+const PROVIDER = Provider.Bridge2Bitcoin
 
-  return $fetch('/api/fetcher/match-placeid', {
-    method: 'post',
-    query: { provider: Provider.Bridge2Bitcoin },
-    body: locations,
-  })
-})
+export async function fetchBridge2Bitcoin(): Promise<FetcherResult> {
+  const supabaseClient = await getAuthClient()
+  const locations = await getLocations(useRuntimeConfig().providersSources[PROVIDER])
+  const res = await fetcher(locations, PROVIDER, supabaseClient)
+  return res
+}
 
-interface BridgeToBitcoinLocation extends Omit<LocationSource, 'category'> {
+interface BridgeToBitcoinLocation extends LocationSource {
   description: string
   lightning: boolean
   boltCard: boolean

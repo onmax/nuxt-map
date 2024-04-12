@@ -1,5 +1,7 @@
+import { env } from 'node:process'
+import { createConsola } from 'consola'
+import { type GoogleMapsCandidate, type LocationCandidates, type LocationSource, MatchState } from '../types'
 import { parseGoogleTypes } from './google-maps-types'
-import { type GoogleMapsCandidate, type LocationCandidates, type LocationSource, MatchState } from './types'
 
 export interface PlaceIdDetailsResponse {
   geometry: { location: { lat: number, lng: number } }
@@ -15,18 +17,19 @@ export interface FindPlaceFromTextRes { candidates: PlaceIdDetailsResponse[] }
 async function getCandidatesForLocation(location: LocationSource): Promise<GoogleMapsCandidate[]> {
   const { name, address, lat, lng } = location
 
-  const { googleMapsApiKeyBackend: key } = useRuntimeConfig()
+  const url = new URL(`https://maps.googleapis.com/maps/api/place/findplacefromtext/json`)
+  url.searchParams.append('fields', 'name,formatted_address,geometry,place_id,rating,photos,types')
+  url.searchParams.append('input', (address ? `${name}, ${address}` : name).trim())
+  url.searchParams.append('inputtype', 'textquery')
+  if (lat && lng) {
+    const radius = address ? 1000 : 5000 // in meters
+    url.searchParams.append('locationbias', `circle:${radius}@${lat},${lng}`)
+  }
 
-  const url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json`
+  url.searchParams.append('language', 'en')
+  url.searchParams.append('key', env.GOOGLE_MAPS_API_KEY_BACKEND!)
 
-  const fields = 'name,formatted_address,geometry,place_id,rating,photos,types'
-  const input = (address ? `${name}, ${address}` : name).trim()
-  const inputtype = 'textquery'
-  const locationbias = `circle:50@${lat},${lng}`
-  const language = 'en'
-  const query = { inputtype, fields, key, input, locationbias, language }
-
-  const rawCandidates = await $fetch<FindPlaceFromTextRes>(url, { query }).then(d => d.candidates)
+  const rawCandidates = await fetch(url).then(d => d.json()).then(d => d.candidates as PlaceIdDetailsResponse[])
 
   const candidates: GoogleMapsCandidate[] = rawCandidates.map(_candidate => ({
     name: _candidate.name,
@@ -56,7 +59,11 @@ export async function getCandidates(locations: LocationSource[]): Promise<Locati
   const candidates: LocationCandidates[] = []
   const batchSize = 10
 
+  const consola = createConsola()
+
   for (let i = 0; i < locations.length; i += batchSize) {
+    consola.info(`Processing batch ${i / batchSize + 1}/${Math.ceil(locations.length / batchSize)}`)
+    consola.prompt(`Processing ${i} of ${locations.length} locations`)
     const batch = locations.slice(i, i + batchSize)
     const batchResults = await Promise.all(batch.map(getCandidatesForLocation))
     const batchCandidates: LocationCandidates[] = batchResults.map((candidates, j) =>

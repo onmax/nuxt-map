@@ -1,8 +1,9 @@
 import levenshtein from 'damerau-levenshtein'
 import type { IFuseOptions } from 'fuse.js'
 import Fuse from 'fuse.js'
-import { MatchState } from './types'
-import type { GoogleMapsCandidate, LocationCandidates, LocationSource } from './types'
+import { MatchState } from '../types'
+import type { GoogleMapsCandidate, LocationCandidates, LocationSource } from '../types'
+import { countData } from './geo-score'
 
 // Gets the Damerau-Levenshtein score between two strings. 1 is the maximum score, 0 is the minimum
 export function getDamerauLevScore(a: string, b: string): number {
@@ -51,11 +52,29 @@ export function classifyByStringScore(locations: LocationCandidates[]) {
       candidate.stringScore = location.source.address ? (nameScore + addressScore) / 2 : nameScore
     }
 
-    const [firstCandidateName, secondCandidateName] = location.candidates.sort((a, b) => b.stringScore - a.stringScore)
+    // Sort candidates by their string score in descending order
+    location.candidates = location.candidates.sort((a, b) => b.stringScore - a.stringScore)
 
-    if (firstCandidateName.distanceScore >= 0.9 && (secondCandidateName === undefined || secondCandidateName.distanceScore < 0.5)) {
-      location.state = MatchState.StringMatch
-      location.candidates = [firstCandidateName]
+    // Check for top candidates with high scores
+    const highScoreCandidates = location.candidates.filter(candidate => candidate.stringScore > 0.9)
+
+    if (highScoreCandidates.length > 1) {
+      // Sort by the amount of data each candidate has if more than one candidate has a high score
+      const mostDataCandidate = highScoreCandidates.sort((a, b) => {
+        const dataCountA = countData(a)
+        const dataCountB = countData(b)
+        if (dataCountA === dataCountB)
+          return b.stringScore - a.stringScore // If data count is the same, sort by score
+        else
+          return dataCountB - dataCountA // Otherwise, sort by data count
+      })[0]
+
+      location.state = MatchState.GeoMatch
+      location.candidates = [mostDataCandidate, ...location.candidates.filter(c => c !== mostDataCandidate)]
+    }
+    else if (location.candidates[0].stringScore >= 0.9 && (!location.candidates[1] || location.candidates[1].stringScore < 0.5)) {
+      // Only one candidate has a high score and it's significantly higher than the second
+      location.state = MatchState.GeoMatch
     }
   }
 }

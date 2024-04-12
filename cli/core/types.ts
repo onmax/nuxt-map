@@ -10,7 +10,7 @@ export interface LocationSource extends ExtraLocationSource {
   accepts: Currency[]
   address?: string
   sells?: Currency[]
-  category: Category
+  category?: Category
   facebook?: string
   instagram?: string
 }
@@ -84,4 +84,12 @@ export type LocationMatch = Prettify<{ source: LocationSource } & (
 export enum MimeType {
   JSON = 'application/json',
   CSV = 'text/csv',
+}
+
+export interface FetcherResult {
+  matchedUrl: string
+  unmatchedUrl: string
+  matched: LocationCandidates[]
+  unmatched: LocationCandidates[]
+  distribution: object
 }

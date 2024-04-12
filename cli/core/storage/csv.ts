@@ -1,7 +1,7 @@
 import { Parser } from '@json2csv/plainjs'
 import { parse as parseCSV } from 'csv-string'
 
-import type { GoogleMapsCandidate, LocationCandidates, LocationSource, MatchState } from './types'
+import type { GoogleMapsCandidate, LocationCandidates, LocationSource, MatchState } from '../types'
 import type { Category, Currency } from '~/types/crypto-map'
 
 export function toCSV(locations: LocationCandidates[]) {
@@ -56,7 +56,7 @@ interface CSVRow {
   'candidate.nameFuzzySearchScore'?: number
   'candidate.addressDamerauLevensteinScore'?: number
   'candidate.addressFuzzySearchScore'?: number
-  state: MatchState
+  'state': MatchState
 }
 
 export async function csvToJson(csv: string) {

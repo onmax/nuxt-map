@@ -763,13 +763,13 @@ export interface Database {
           }
           Returns: unknown
         }
-          | {
+        | {
           Args: {
             '': unknown
           }
           Returns: unknown
         }
-          | {
+        | {
           Args: {
             '': unknown
           }

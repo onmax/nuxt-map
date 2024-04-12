@@ -1,18 +1,19 @@
 import { hash } from 'ohash'
-import type { LocationSource } from '../../lib/types'
+import type { FetcherResult, LocationSource } from '../src/types'
+import { fetcher } from '../src'
+import { getAuthClient } from '../src/database'
 import { Currency, Provider } from '~/types/crypto-map'
 
-export default defineEventHandler(async () => {
-  const locations = await getLocations('https://acceptlightning.com/merchants.json')
+const PROVIDER = Provider.AcceptLightning
 
-  return $fetch('/api/fetcher/match-placeid', {
-    method: 'post',
-    query: { provider: Provider.AcceptLightning },
-    body: locations,
-  })
-})
+export async function fetchAcceptLightning(): Promise<FetcherResult> {
+  const supabaseClient = await getAuthClient()
+  const locations = await getLocations(useRuntimeConfig().providersSources[PROVIDER])
+  const res = await fetcher(locations, PROVIDER, supabaseClient)
+  return res
+}
 
-export interface AcceptLightningApi extends Omit<LocationSource, 'category'> {
+export interface AcceptLightningApi extends LocationSource {
   phone?: string
   website?: string
   service?: string

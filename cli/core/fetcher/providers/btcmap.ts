@@ -1,15 +1,17 @@
-import type { LocationSource } from '../../lib/types'
-import { filterCurrencies, toUtf8 } from '../../lib/util'
+import type { FetcherResult, LocationSource } from '../src/types'
+import { fetcher } from '../src'
+import { filterCurrencies, toUtf8 } from '../src/util'
+import { getAuthClient } from '../src/database'
 import { Category, Currency, Provider } from '~/types/crypto-map'
 
-export default defineEventHandler(async () => {
-  const locations = await getLocations('https://static.btcmap.org/api/v2/elements.json')
-  return $fetch('/api/fetcher/match-placeid', {
-    method: 'post',
-    query: { provider: Provider.BtcMap },
-    body: locations,
-  })
-})
+const PROVIDER = Provider.BtcMap
+
+export async function fetchBtcMap(): Promise<FetcherResult> {
+  const supabaseClient = await getAuthClient()
+  const locations = await getLocations(useRuntimeConfig().providersSources[PROVIDER])
+  const res = await fetcher(locations, PROVIDER, supabaseClient)
+  return res
+}
 
 export interface BtcMapLocation extends LocationSource {
   facebook: string
