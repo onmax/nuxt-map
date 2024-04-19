@@ -4,7 +4,18 @@ import { parse as parseCSV } from 'csv-string'
 import type { GoogleMapsCandidate, LocationCandidates, LocationSource, MatchState } from '../types'
 import type { Category, Currency } from '~/types/crypto-map'
 
-export function toCSV(locations: LocationCandidates[]) {
+export function locationsToCSV(locations: LocationSource[]) {
+  if (locations.length === 0)
+    return ''
+
+  const firstLocation = locations.at(0)!
+  const fields = Object.keys(firstLocation)
+
+  const parser = new Parser({ fields })
+  return parser.parse(locations)
+}
+
+export function candidatesToCSV(locations: LocationCandidates[]) {
   if (locations.length === 0)
     return ''
 
@@ -41,6 +52,7 @@ interface CSVRow {
   'source.category': Category
   'source.facebook'?: string
   'source.instagram'?: string
+  'source.provider': string
   'candidate.name'?: string
   'candidate.category'?: string
   'candidate.lat'?: number
@@ -59,7 +71,32 @@ interface CSVRow {
   'state': MatchState
 }
 
-export async function csvToJson(csv: string) {
+export async function csvToLocationsJson(csv: string) {
+  if (!csv)
+    return
+  const parsed = parseCSV(csv, { output: 'objects' }) as unknown as LocationSource[]
+  const locations: LocationSource[] = []
+  for await (const record of parsed) {
+    const { id, name, accepts, category, coinmapCategory, lat, lng, address, facebook, instagram, sells, provider } = record
+    const source: LocationSource = {
+      id,
+      name,
+      accepts: accepts ? JSON.parse(accepts as unknown as string) as Currency[] : [],
+      category: coinmapCategory as Category || category,
+      lat,
+      lng,
+      address,
+      facebook,
+      instagram,
+      sells: sells ? JSON.parse(sells as unknown as string) as Currency[] : [],
+      provider,
+    }
+    locations.push(source)
+  }
+  return locations
+}
+
+export async function csvToCandidatesJson(csv: string) {
   if (!csv)
     return
   const locationCandidates: LocationCandidates[] = []
@@ -103,6 +140,7 @@ export async function csvToJson(csv: string) {
         facebook: record['source.facebook'],
         instagram: record['source.instagram'],
         sells: record['source.sells'] ? JSON.parse(record['source.sells'] as string) as Currency[] : [],
+        provider: record['source.provider'],
       }
       locationCandidates.push({ state, source, candidates: [candidate] })
     }
