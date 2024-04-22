@@ -3,7 +3,7 @@ import { createConsola } from 'consola'
 import { fetchLocationsFromProvider } from '@/cli/core/fetcher/providers'
 import 'dotenv/config'
 import { Category, Provider } from '@/types/crypto-map'
-import { getAuthClient, sanitizeProviderName } from '@/cli/core/database'
+import { getAuthClient, sanitizeProviderName, saveToDatabase } from '@/cli/core/database'
 import { downloadLocations, downloadUnprocessedLocations } from '@/cli/core/storage'
 import { Currency } from '~/types/crypto-map'
 
@@ -59,8 +59,9 @@ export default defineCommand({
           return l
         const accepts = f.accepts.filter(c => c in Currency)
         const sells = f.sells?.filter(c => c in Currency)
-        if (f.category as unknown === 'atm')
-          l.source.category = Category.Cash
+        if (f.category as unknown === 'atm' && l.candidates.length > 0)
+          l.candidates.at(0)!.category = Category.Cash
+
         const provider = f.provider
         return { ...l, source: { ...l.source, accepts, sells, provider } }
       })
@@ -68,7 +69,13 @@ export default defineCommand({
       consola.info('Nothing to update')
       return
     }
-    consola.info(`Updated ${newLocations.length} locations`)
-    consola.log(newLocations.find(l => l.source.category === Category.Cash))
+
+    const error = await saveToDatabase(supabase, newLocations)
+    if (error) {
+      consola.error(error)
+      return
+    }
+
+    consola.success(`Updated ${newLocations.length} locations`)
   },
 })

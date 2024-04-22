@@ -11,7 +11,7 @@ export async function saveToDatabase(client: SupabaseClient<Database>, allLocati
     try {
       locations.push({
         name: source.name,
-        address: source.address,
+        address: candidates.at(0)?.address,
         geo_location: `POINT(${source.lng} ${source.lat})`,
         category: candidates.at(0)?.category,
         accepts: source.accepts || [],
