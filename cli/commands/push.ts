@@ -33,7 +33,7 @@ export default defineCommand({
     const supabase = await getAuthClient()
     const locations = await downloadLocations(supabase, path)
 
-    const error = await saveToDatabase(supabase, locations, provider)
+    const error = await saveToDatabase(supabase, locations)
     if (error)
       consola.error(`Error saving data to the database: ${JSON.stringify(error)}`)
   },

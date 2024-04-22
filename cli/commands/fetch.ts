@@ -1,13 +1,11 @@
 import { defineCommand } from 'citty'
 import { createConsola } from 'consola'
-import { fetchLocationsFromProvider } from '~/cli/core/fetcher/providers'
+import { fetchLocationsFromProvider } from '@/cli/core/fetcher/providers'
 import 'dotenv/config'
-import { Provider } from '~/types/crypto-map'
-import { getAuthClient, sanitizeProviderName, saveToDatabase } from '~/cli/core/database'
-import { uploadLocations } from '~/cli/core/storage'
-import { confirmBatchProcessing, getStats, processBatch } from '~/cli/core/matcher/'
-import { dateToStr } from '~/cli/core/storage/date'
-import type { LocationCandidates } from '~/cli/core/types'
+import { Provider } from '@/types/crypto-map'
+import { getAuthClient, sanitizeProviderName } from '@/cli/core/database'
+import { uploadUnprocessedLocations } from '@/cli/core/storage'
+import { dateToStr } from '@/cli/core/storage/date'
 
 export default defineCommand({
   meta: {
@@ -72,68 +70,14 @@ export default defineCommand({
     }
     consola.debug(`The first element of the list looks like ${JSON.stringify(locations.at(0), null, 2)}`)
 
-    const allMatched: LocationCandidates[] = []
-    const allUnmatched: LocationCandidates[] = []
-
     const ts = dateToStr(new Date())
-    const rootPath = `${sanitizeProviderName(provider)}/${ts}`
-
-    const batchesCount = Math.ceil(locations.length / batchSize)
-    consola.info(`Matching ${locations.length} locations in ${batchesCount} batches of ${batchSize} locations each.`)
-
-    let index = offset * batchSize
-    let currentBatch = offset + 1
-
-    if (offset > 0)
-      consola.warn(`Skipping the first ${currentBatch} batches, which contain ${index} locations.`)
-
-    try {
-      while (index < locations.length) {
-        const confirmed = await confirmBatchProcessing(consola, currentBatch, batchesCount)
-        if (!confirmed)
-          return
-
-        const batch = locations.slice(index, index + batchSize)
-        const { matched, unmatched } = await processBatch(batch)
-
-        allMatched.push(...matched)
-        allUnmatched.push(...unmatched)
-
-        const stats = getStats({ matched, unmatched })
-        consola.info(`Total: ${stats.total} |  ${stats.distribution.map(({ state, count, percentage }) => `${state}: ${count} (${percentage}%)`).join(' | ')}`)
-
-        const path = `${rootPath}/part-${currentBatch}`
-
-        await uploadLocations(supabase, { matched, unmatched, path })
-
-        consola.success(`Batch uploaded to ${path} uploaded to Supabase.`)
-
-        currentBatch++
-        index += batchSize
-      }
-    }
-    catch (err) {
-      consola.error('Error while processing batch', JSON.stringify(err))
-      consola.info(`But no worries, we have uploaded the data to Supabase in parts. You can continue from where you left off by running the command again setting an offset.`)
-    }
-
-    const stats = getStats({ matched: allMatched, unmatched: allUnmatched })
-    const statsInline = stats.distribution.map(({ state, count, percentage }) => `${state}: ${count} (${percentage}%)`).join(' | ')
-    consola.info(`Matching completed. Total: ${allMatched.length} matched | ${allUnmatched.length} unmatched. ${stats.total} total. ${statsInline}`)
-
-    if (allMatched.length === 0 && allUnmatched.length === 0) {
-      consola.warn('No locations found.')
+    const path = `${sanitizeProviderName(provider)}/fetched/`
+    const promises = await uploadUnprocessedLocations(supabase, { locations, path, name: ts })
+    if (promises.some(({ status }) => status === 'rejected')) {
+      consola.error('Error uploading some files to Supabase')
+      consola.error(promises)
       return
     }
-
-    const path = `${rootPath}/all`
-    const { matchedUrl, unmatchedUrl } = await uploadLocations(supabase, { matched: allMatched, unmatched: allUnmatched, path })
     consola.success('All data uploaded to Supabase Storage.')
-
-    // TODO Handle error case
-    await saveToDatabase(supabase, allMatched, provider)
-    consola.success('All matched data saved to Supabase Database.')
-
-    consola.info(JSON.stringify({ matchedUrl, unmatchedUrl }, null, 2))
   },
 })

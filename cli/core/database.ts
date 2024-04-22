@@ -5,7 +5,7 @@ import type { LocationCandidates } from './types'
 import type { Database } from '~/types/supabase'
 import type { Provider } from '~/types/crypto-map'
 
-export async function saveToDatabase(client: SupabaseClient<Database>, allLocations: LocationCandidates[], provider: Provider) {
+export async function saveToDatabase(client: SupabaseClient<Database>, allLocations: LocationCandidates[]) {
   const locations = []
   for (const { source, candidates } of allLocations) {
     try {
@@ -25,7 +25,7 @@ export async function saveToDatabase(client: SupabaseClient<Database>, allLocati
         gmaps_types: [],
         uuid: crypto.randomUUID(),
         enabled: false,
-        provider,
+        provider: source.provider,
       })
     }
     catch (e) {

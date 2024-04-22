@@ -13,6 +13,7 @@ export interface LocationSource extends ExtraLocationSource {
   category?: Category
   facebook?: string
   instagram?: string
+  provider: string
 }
 
 export interface GoogleMapsCandidate {
