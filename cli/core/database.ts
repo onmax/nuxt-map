@@ -1,5 +1,5 @@
 import { env } from 'node:process'
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { PostgrestSingleResponse, SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@supabase/supabase-js'
 import type { LocationCandidates } from './types'
 import type { Database } from '~/types/supabase'
@@ -29,7 +29,6 @@ export async function saveToDatabase(client: SupabaseClient<Database>, allLocati
       })
     }
     catch (e) {
-      console.log(source)
       console.error(e)
     }
   }
@@ -38,6 +37,47 @@ export async function saveToDatabase(client: SupabaseClient<Database>, allLocati
   const error = await client.from('locations').upsert(locations, { onConflict: ['gmaps_place_id'], ignoreDuplicates: true })
 
   return error
+}
+
+export async function updateDatabase(client: SupabaseClient<Database>, allLocations: LocationCandidates[]) {
+  const locations = []
+  for (const { source, candidates } of allLocations) {
+    try {
+      locations.push({
+        name: source.name,
+        address: candidates.at(0)?.address,
+        geo_location: `POINT(${source.lng} ${source.lat})`,
+        category: candidates.at(0)?.category,
+        accepts: source.accepts || [],
+        sells: source.sells || [],
+        gmaps_place_id: candidates.at(0)?.placeId,
+        facebook: source.facebook,
+        instagram: source.instagram,
+        photo: candidates.at(0)?.photo,
+        rating: candidates.at(0)?.rating || 0,
+        // gmaps_types: `{${(candidates.at(0)?.gmapsTypes || []).join(',')}}`,
+        gmaps_types: [],
+        uuid: crypto.randomUUID(),
+        enabled: false,
+        provider: source.provider,
+      })
+    }
+    catch (e) {
+      console.error(e)
+    }
+  }
+
+  const response: PostgrestSingleResponse<null>[] = []
+  await Promise.all(locations.map(async (location) => {
+    const { gmaps_place_id } = location
+    if (!gmaps_place_id)
+      return
+    const res = await client.from('locations').update(location).eq('gmaps_place_id', gmaps_place_id)
+    if (res.error)
+      console.error(res)
+    response.push()
+  }))
+  return response
 }
 
 export const sanitizeProviderName = (provider: Provider) => provider.replace(/\s/g, '-').toLowerCase()

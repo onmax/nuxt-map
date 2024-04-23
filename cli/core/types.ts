@@ -38,6 +38,7 @@ export interface GoogleMapsCandidate {
 }
 
 export interface LocationCandidates {
+  id?: number
   source: LocationSource
   candidates: GoogleMapsCandidate[]
   state: MatchState

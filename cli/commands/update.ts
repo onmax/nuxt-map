@@ -1,9 +1,8 @@
 import { defineCommand } from 'citty'
 import { createConsola } from 'consola'
-import { fetchLocationsFromProvider } from '@/cli/core/fetcher/providers'
 import 'dotenv/config'
 import { Category, Provider } from '@/types/crypto-map'
-import { getAuthClient, sanitizeProviderName, saveToDatabase } from '@/cli/core/database'
+import { getAuthClient, sanitizeProviderName, updateDatabase } from '@/cli/core/database'
 import { downloadLocations, downloadUnprocessedLocations } from '@/cli/core/storage'
 import { Currency } from '~/types/crypto-map'
 
@@ -51,31 +50,38 @@ export default defineCommand({
     }
     consola.info(`Fetched ${fetched.length} locations from ${fetchedPath}`)
 
-    const newLocations = locations
-      .filter(l => fetched.find(f => f.id === l.source.id))
-      .map((l) => {
-        const f = fetched.find(f => f.id === l.source.id)
-        if (!f)
-          return l
-        const accepts = f.accepts.filter(c => c in Currency)
-        const sells = f.sells?.filter(c => c in Currency)
-        if (f.category as unknown === 'atm' && l.candidates.length > 0)
-          l.candidates.at(0)!.category = Category.Cash
+    const newLocations = await Promise.all(
+      locations
+        .filter(l => fetched.find(f => f.id === l.source.id))
+        .map(async (l) => {
+          const f = fetched.find(f => f.id === l.source.id)
+          if (!f)
+            return l
+          const accepts = f.accepts.filter(c => c in Currency)
+          const sells = f.sells?.filter(c => c in Currency)
+          if (f.category as unknown === 'atm' && l.candidates.length > 0)
+            l.candidates.at(0)!.category = Category.Cash
 
-        const provider = f.provider
-        return { ...l, source: { ...l.source, accepts, sells, provider } }
-      })
+          const provider = f.provider
+          // const gmaps_place_id = l.candidates.at(0)?.placeId
+          // const primary_key = await supabase.from('locations').select('id').eq('gmaps_place_id', gmaps_place_id!).single()
+          // return { ...l, id: primary_key.data?.id, source: { ...l.source, accepts, sells, provider } }
+          return { ...l, source: { ...l.source, accepts, sells, provider } }
+        }),
+    )
     if (newLocations.length === 0) {
       consola.info('Nothing to update')
       return
     }
 
-    const error = await saveToDatabase(supabase, newLocations)
-    if (error.error) {
-      consola.error(error)
+    consola.info(`Updating ${newLocations.length} locations`)
+    const res = await updateDatabase(supabase, newLocations)
+    if (res.length) {
+      consola.error(res)
       return
     }
+    const count = res.reduce((acc, r) => acc + (r.count || 0), 0)
 
-    consola.success(`Updated ${newLocations.length} locations`)
+    consola.success(`Updated ${count} locations`)
   },
 })
