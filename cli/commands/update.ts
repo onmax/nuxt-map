@@ -71,7 +71,7 @@ export default defineCommand({
     }
 
     const error = await saveToDatabase(supabase, newLocations)
-    if (error) {
+    if (error.error) {
       consola.error(error)
       return
     }
