@@ -40,10 +40,10 @@ export async function saveToDatabase(client: SupabaseClient<Database>, allLocati
 }
 
 export async function updateDatabase(client: SupabaseClient<Database>, allLocations: LocationCandidates[]) {
-  const locations = []
+  let count = 0
   for (const { source, candidates } of allLocations) {
     try {
-      locations.push({
+      const location = {
         name: source.name,
         address: candidates.at(0)?.address,
         geo_location: `POINT(${source.lng} ${source.lat})`,
@@ -55,29 +55,20 @@ export async function updateDatabase(client: SupabaseClient<Database>, allLocati
         instagram: source.instagram,
         photo: candidates.at(0)?.photo,
         rating: candidates.at(0)?.rating || 0,
-        // gmaps_types: `{${(candidates.at(0)?.gmapsTypes || []).join(',')}}`,
-        gmaps_types: [],
-        uuid: crypto.randomUUID(),
-        enabled: false,
         provider: source.provider,
-      })
+      }
+      const { error } = await client.from('locations').update(location).eq('gmaps_place_id', location.gmaps_place_id!)
+      if (error)
+        console.error(error)
+      else
+        count++
     }
     catch (e) {
       console.error(e)
     }
   }
 
-  const response: PostgrestSingleResponse<null>[] = []
-  await Promise.all(locations.map(async (location) => {
-    const { gmaps_place_id } = location
-    if (!gmaps_place_id)
-      return
-    const res = await client.from('locations').update(location).eq('gmaps_place_id', gmaps_place_id)
-    if (res.error)
-      console.error(res)
-    response.push()
-  }))
-  return response
+  return count
 }
 
 export const sanitizeProviderName = (provider: Provider) => provider.replace(/\s/g, '-').toLowerCase()

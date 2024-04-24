@@ -75,12 +75,7 @@ export default defineCommand({
     }
 
     consola.info(`Updating ${newLocations.length} locations`)
-    const res = await updateDatabase(supabase, newLocations)
-    if (res.length) {
-      consola.error(res)
-      return
-    }
-    const count = res.reduce((acc, r) => acc + (r.count || 0), 0)
+    const count = await updateDatabase(supabase, newLocations)
 
     consola.success(`Updated ${count} locations`)
   },
